@@ -13,6 +13,8 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
     steps:
       - uses: actions/checkout@v4
 
@@ -22,7 +24,22 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # 在CI环境自动生成gradle wrapper
+      - name: Install Android SDK
+        run: |
+          mkdir -p $ANDROID_SDK_ROOT
+          cd $ANDROID_SDK_ROOT
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q commandlinetools-linux-11076708_latest.zip
+          # 修正官方要求的目录层级：cmdline-tools/latest/bin/sdkmanager
+          mv cmdline-tools latest
+          mkdir -p cmdline-tools
+          mv latest cmdline-tools/
+          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
+          # 自动接受所有SDK许可
+          yes | sdkmanager --licenses
+          # 安装编译必需组件
+          sdkmanager "platforms;android-33" "build-tools;34.0.0" "platform-tools"
+
       - name: Generate Gradle Wrapper
         run: |
           cd android
@@ -32,7 +49,10 @@ jobs:
         run: chmod +x android/gradlew
 
       - name: Build debug APK
-        run: cd android && ./gradlew assembleDebug --no-daemon --stacktrace
+        run: |
+          cd android
+          export ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Package APK into a zip
         run: |
