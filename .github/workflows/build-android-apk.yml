@@ -1,9 +1,5 @@
 name: build-android-apk
 
-# 每次 push 到 main / 打 tag v* / 手动触发时，自动编译 Android APK。
-# 产物：名为 karute-ble-apk 的 artifact（zip 包，里面是 app-debug.apk）；
-# 打 tag v* 时还会自动挂到 GitHub Release 页。
-
 on:
   push:
     branches: [ main ]
@@ -21,28 +17,39 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # 手动安装 Android Command Line Tools，不再使用 setup-android@v3
+      - name: Install Android SDK Command-line Tools
+        run: |
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          cd $HOME/android-sdk/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q commandlinetools-linux-11076708_latest.zip
+          mv cmdline-tools latest
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          # 接受许可
+          yes | sdkmanager --licenses
+          # 安装构建工具与平台
+          sdkmanager "platforms;android-33" "build-tools;34.0.0"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android/gradlew
 
       - name: Build debug APK
-        uses: gradle/gradle-build-action@v3
-        with:
-          gradle-version: '8.5'
-          arguments: -p android --no-daemon --stacktrace assembleDebug
+        run: cd android && ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Package APK into a zip
         run: |
-          set -e
           mkdir -p dist
           cp android/app/build/outputs/apk/debug/app-debug.apk dist/karute-ble-debug.apk
           cd dist
           zip -9 karute-ble-apk.zip karute-ble-debug.apk
-          ls -lh dist/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
